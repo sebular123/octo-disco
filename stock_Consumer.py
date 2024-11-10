@@ -1,10 +1,12 @@
 from confluent_kafka import Consumer, KafkaError
 import os
+import json
+import polars as pl
 import time
 
-WAIT=40
+WAIT=60
 
-time.sleep(WAIT*2)
+time.sleep(WAIT+10)
 print('Starting consumer...')
 
 
@@ -22,6 +24,14 @@ consumer = Consumer(conf)
 topic = 'conn-events'  # Replace with your topic name
 consumer.subscribe([topic])
 
+# Create an empty Polars DataFrame with specified columns and types
+df = pl.DataFrame(
+    schema={
+        "timestamp": pl.String,   # Column for strings
+        "price": pl.Float64         # Column for prices
+    }
+)
+
 # Consume messages
 try:
     while True:
@@ -38,7 +48,23 @@ try:
             # Proper message
             print(f"Received message: {msg.value().decode('utf-8')} from {msg.topic()} [{msg.partition()}] @ offset {msg.offset()}")
 
+            decoded_message = msg.value().decode('utf-8')
+
+            deserialized_data = json.loads(decoded_message)
+
+            # New row to append
+            new_row = pl.DataFrame({
+                "timestamp": deserialized_data["timestamp"],
+                "price": deserialized_data["price"]
+            })
+
+            # Append the new row
+            df = df.vstack(new_row)
+
+            print(df)
+
         time.sleep(WAIT)
+
 except KeyboardInterrupt:
     print("Consumer interrupted by user")
 finally:
