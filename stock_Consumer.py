@@ -32,6 +32,18 @@ df = pl.DataFrame(
     }
 )
 
+
+def add_to_df(df: pl.DataFrame, row: pl.DataFrame):
+    current_timestamp = row.select(pl.first("timestamp")).item()
+    if not df.filter(pl.col("timestamp") == current_timestamp).is_empty():
+        df = df.filter(pl.col("timestamp") != current_timestamp)
+        return df.vstack(new_row)
+    elif df.height >= 120:
+        df = df.filter(pl.col("timestamp") != df["timestamp"].min())
+
+    return df.vstack(new_row)
+
+
 # Consume messages
 try:
     while True:
@@ -59,7 +71,7 @@ try:
             })
 
             # Append the new row
-            df = df.vstack(new_row)
+            df = add_to_df(df, new_row)
 
             print(df)
 
