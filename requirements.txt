@@ -7,3 +7,6 @@ confluent_kafka==2.6.0    # Confluent's Kafka client for Python
 # Data manipulation and finance data
 polars==1.12.0            # Fast DataFrame library similar to pandas
 yfinance==0.2.48          # Library to fetch financial data from Yahoo Finance
+
+streamlit==1.40.0
+plotly==5.24.1

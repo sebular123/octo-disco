@@ -3,12 +3,16 @@ import os
 import json
 import polars as pl
 import time
+from multiprocessing import Manager
 
 WAIT=60
 
 time.sleep(WAIT+10)
 print('Starting consumer...')
 
+# Shared memory setup
+manager = Manager()
+shared_data = manager.dict()
 
 # Get Kafka broker from environment variable
 conf = {
@@ -25,7 +29,7 @@ topic = 'conn-events'  # Replace with your topic name
 consumer.subscribe([topic])
 
 # Create an empty Polars DataFrame with specified columns and types
-df = pl.DataFrame(
+shared_data["df"] = pl.DataFrame(
     schema={
         "timestamp": pl.String,   # Column for strings
         "price": pl.Float64         # Column for prices
@@ -33,15 +37,20 @@ df = pl.DataFrame(
 )
 
 
-def add_to_df(df: pl.DataFrame, row: pl.DataFrame):
-    current_timestamp = row.select(pl.first("timestamp")).item()
-    if not df.filter(pl.col("timestamp") == current_timestamp).is_empty():
-        df = df.filter(pl.col("timestamp") != current_timestamp)
-        return df.vstack(new_row)
-    elif df.height >= 120:
-        df = df.filter(pl.col("timestamp") != df["timestamp"].min())
+def get_dataframe():
+    return shared_data["df"]
 
-    return df.vstack(new_row)
+
+def add_to_df(row: pl.DataFrame):
+    current_timestamp = row.select(pl.first("timestamp")).item()
+    if not shared_data["df"].filter(pl.col("timestamp") == current_timestamp).is_empty():
+        shared_data["df"] = shared_data["df"].filter(pl.col("timestamp") != current_timestamp)
+        return shared_data["df"].vstack(row)
+    elif shared_data["df"].height >= 120:
+        min_timestamp = shared_data["df"].select(pl.col("timestamp")).min().item()
+        shared_data["df"] = shared_data["df"].filter(pl.col("timestamp") != min_timestamp)
+
+    return shared_data["df"].vstack(row)
 
 
 # Consume messages
@@ -71,9 +80,9 @@ try:
             })
 
             # Append the new row
-            df = add_to_df(df, new_row)
+            shared_data["df"] = add_to_df(new_row)
 
-            print(df)
+            print(shared_data["df"])
 
         time.sleep(WAIT)
 
