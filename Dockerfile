@@ -10,5 +10,4 @@ COPY . /app
 # Install the required Python packages
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Set the entrypoint to run create_topic.py, then producer and consumer
-CMD ["python", "create_topic.py"]
+EXPOSE 8501

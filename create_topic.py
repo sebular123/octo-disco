@@ -4,7 +4,6 @@ import time
 
 WAIT=40
 
-time.sleep(WAIT)
 print('Starting topic creation...')
 
 # Kafka topic name and configuration

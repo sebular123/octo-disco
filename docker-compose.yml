@@ -1,5 +1,3 @@
-version: '3.7'
-
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
@@ -40,8 +38,11 @@ services:
   producer:
     build: .
     container_name: producer
+    environment:
+      - wait=60
     depends_on:
       - kafka
+      - create_topic
     entrypoint: ["python", "-u", "stock_Producer.py"]
     networks:
       - kafka-net
@@ -51,7 +52,19 @@ services:
     container_name: consumer
     depends_on:
       - kafka
+      - producer
     entrypoint: ["python", "-u", "stock_Consumer.py"]
+    networks:
+      - kafka-net
+
+  dashboard:
+    build: .
+    container_name: dashboard
+    ports:
+      - "8501:8501"
+    depends_on:
+      - consumer
+    entrypoint: ["sh", "-c", "sleep 10 && streamlit run visualisation.py --server.port=8501"]
     networks:
       - kafka-net
 

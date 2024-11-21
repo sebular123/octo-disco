@@ -7,7 +7,7 @@ from multiprocessing import Manager
 
 WAIT=60
 
-time.sleep(WAIT+10)
+time.sleep(10)
 print('Starting consumer...')
 
 # Shared memory setup

@@ -11,7 +11,6 @@ import datetime
 
 WAIT = 60
 
-time.sleep(WAIT)
 print('Starting producer...')
 
 
