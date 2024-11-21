@@ -1,34 +1,29 @@
-from stock_Consumer import get_dataframe
 import streamlit as st
 import time
-import polars as pl
-import plotly.express as px
-import numpy as np
+from stock_Consumer import KafkaConsumerHandler
 
-st.set_page_config(
-    page_title="Real-Time Bitcoin Feed",
-    page_icon="✅",
-    layout="wide",
-)
+# Streamlit page configuration
+st.set_page_config(page_title="Real-Time Bitcoin Feed", page_icon="✅", layout="wide")
 
 # Dashboard title
 st.title("Real-Time / Live Bitcoin Feed")
 
-# Creating a single-element container
+# Initialize the Kafka consumer handler
+kafka_handler = KafkaConsumerHandler()
+
+# Start the Kafka consumer in the background
+st.write("Starting Kafka Consumer...")
+import threading
+threading.Thread(target=kafka_handler.start_consumer, daemon=True).start()
+
+# Visualization loop
 placeholder = st.empty()
-
-# Refresh loop
 while True:
-    # Fetch the latest DataFrame
-    df = get_dataframe()
-
-    with placeholder.container():
-        st.markdown("### Visualisation")
-        if df.height > 0:  # Ensure the DataFrame is not empty
-            fig = px.line(df, x="timestamp", y="price", title="Bitcoin Price Over Time")
-            st.plotly_chart(fig, use_container_width=True)
-
-        st.markdown("### Detailed Data View")
-        st.dataframe(df)
-
-    time.sleep(10)  # Wait before the next update
+    df = kafka_handler.get_dataframe()
+    if df.height > 0:  # Ensure the DataFrame has data before plotting
+        with placeholder.container():
+            st.line_chart(df, x="timestamp", y="price")
+            st.dataframe(df)
+    else:
+        st.write("Waiting for data...")
+    time.sleep(10)

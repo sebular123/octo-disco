@@ -1,93 +1,74 @@
 from confluent_kafka import Consumer, KafkaError
-import os
 import json
 import polars as pl
-import time
 from multiprocessing import Manager
 
-WAIT=60
 
-time.sleep(10)
-print('Starting consumer...')
+class KafkaConsumerHandler:
+    def __init__(self, topic="conn-events", wait_time=60):
+        self.topic = topic
+        self.wait_time = wait_time
 
-# Shared memory setup
-manager = Manager()
-shared_data = manager.dict()
+        # Shared memory setup
+        manager = Manager()
+        self.shared_data = manager.dict()
+        self.shared_data["df"] = pl.DataFrame(
+            schema={
+                "timestamp": pl.String,
+                "price": pl.Float64
+            }
+        )
 
-# Get Kafka broker from environment variable
-conf = {
-    'bootstrap.servers': "kafka:9092",
-    'group.id': 'my-group',
-    'auto.offset.reset': 'earliest'
-}
+        # Kafka configuration
+        self.conf = {
+            'bootstrap.servers': "kafka:9092",
+            'group.id': 'my-group',
+            'auto.offset.reset': 'earliest'
+        }
 
-# Create a Kafka consumer instance
-consumer = Consumer(conf)
+    def get_dataframe(self):
+        return self.shared_data["df"]
 
-# Subscribe to a Kafka topic
-topic = 'conn-events'  # Replace with your topic name
-consumer.subscribe([topic])
+    def add_to_df(self, row: pl.DataFrame):
+        current_timestamp = row.select(pl.first("timestamp")).item()
+        if not self.shared_data["df"].filter(pl.col("timestamp") == current_timestamp).is_empty():
+            self.shared_data["df"] = self.shared_data["df"].filter(pl.col("timestamp") != current_timestamp)
+            return self.shared_data["df"].vstack(row)
+        elif self.shared_data["df"].height >= 120:
+            min_timestamp = self.shared_data["df"].select(pl.col("timestamp")).min().item()
+            self.shared_data["df"] = self.shared_data["df"].filter(pl.col("timestamp") != min_timestamp)
 
-# Create an empty Polars DataFrame with specified columns and types
-shared_data["df"] = pl.DataFrame(
-    schema={
-        "timestamp": pl.String,   # Column for strings
-        "price": pl.Float64         # Column for prices
-    }
-)
+        return self.shared_data["df"].vstack(row)
 
+    def start_consumer(self):
+        consumer = Consumer(self.conf)
+        consumer.subscribe([self.topic])
+        print("Consumer started and listening...")
 
-def get_dataframe():
-    return shared_data["df"]
+        try:
+            while True:
+                msg = consumer.poll(1.0)  # Wait up to 1 second for a message
+                if msg is None:
+                    continue
+                if msg.error():
+                    if msg.error().code() == KafkaError._PARTITION_EOF:
+                        print(f"Reached end of partition at offset {msg.offset()}")
+                    elif msg.error():
+                        print(f"Error: {msg.error()}")
+                else:
+                    # Decode and process the message
+                    decoded_message = msg.value().decode('utf-8')
+                    deserialized_data = json.loads(decoded_message)
 
+                    new_row = pl.DataFrame({
+                        "timestamp": deserialized_data["timestamp"],
+                        "price": deserialized_data["price"]
+                    })
 
-def add_to_df(row: pl.DataFrame):
-    current_timestamp = row.select(pl.first("timestamp")).item()
-    if not shared_data["df"].filter(pl.col("timestamp") == current_timestamp).is_empty():
-        shared_data["df"] = shared_data["df"].filter(pl.col("timestamp") != current_timestamp)
-        return shared_data["df"].vstack(row)
-    elif shared_data["df"].height >= 120:
-        min_timestamp = shared_data["df"].select(pl.col("timestamp")).min().item()
-        shared_data["df"] = shared_data["df"].filter(pl.col("timestamp") != min_timestamp)
+                    self.shared_data["df"] = self.add_to_df(new_row)
+                print(self.shared_data["df"])
 
-    return shared_data["df"].vstack(row)
-
-
-# Consume messages
-try:
-    while True:
-        msg = consumer.poll(1.0)  # Wait up to 1 second for a message
-        if msg is None:
-            continue
-        if msg.error():
-            if msg.error().code() == KafkaError._PARTITION_EOF:
-                # End of partition event
-                print(f"Reached end of partition at offset {msg.offset()}")
-            elif msg.error():
-                print(f"Error: {msg.error()}")
-        else:
-            # Proper message
-            print(f"Received message: {msg.value().decode('utf-8')} from {msg.topic()} [{msg.partition()}] @ offset {msg.offset()}")
-
-            decoded_message = msg.value().decode('utf-8')
-
-            deserialized_data = json.loads(decoded_message)
-
-            # New row to append
-            new_row = pl.DataFrame({
-                "timestamp": deserialized_data["timestamp"],
-                "price": deserialized_data["price"]
-            })
-
-            # Append the new row
-            shared_data["df"] = add_to_df(new_row)
-
-            print(shared_data["df"])
-
-        time.sleep(WAIT)
-
-except KeyboardInterrupt:
-    print("Consumer interrupted by user")
-finally:
-    # Close down consumer gracefully
-    consumer.close()
+        except KeyboardInterrupt:
+            print("Consumer interrupted by user")
+        finally:
+            consumer.close()
