@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 from stock_Consumer import KafkaConsumerHandler
+import threading
 
 # Streamlit page configuration
 st.set_page_config(page_title="Real-Time Bitcoin Feed", page_icon="✅", layout="wide")
@@ -12,8 +13,6 @@ st.title("Real-Time / Live Bitcoin Feed")
 kafka_handler = KafkaConsumerHandler()
 
 # Start the Kafka consumer in the background
-st.write("Starting Kafka Consumer...")
-import threading
 threading.Thread(target=kafka_handler.start_consumer, daemon=True).start()
 
 # Visualization loop
