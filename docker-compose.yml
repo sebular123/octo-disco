@@ -57,6 +57,43 @@ services:
     networks:
       - kafka-net
 
+  flink-jobmanager:
+    image: flink:latest
+    container_name: flink-jobmanager
+    depends_on:
+      - kafka
+      - producer
+    ports:
+      - "8081:8081"
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
+    command: jobmanager
+    networks:
+      - kafka-net
+
+  flink-taskmanager:
+    image: flink:latest
+    container_name: flink-taskmanager
+    depends_on:
+      - flink-jobmanager
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
+    command: taskmanager
+    networks:
+      - kafka-net
+    
+  flink-job:
+    image: flink:latest
+    container_name: flink-job
+    depends_on:
+      - flink-jobmanager
+      - flink-taskmanager
+    networks:
+      - kafka-net
+    entrypoint: ["/bin/bash", "-c", "./bin/flink run -py /opt/flink-jobs/detect_gaps.py"]
+    volumes:
+      - ./flink_jobs:/opt/flink-jobs
+
   dashboard:
     build: .
     container_name: dashboard

@@ -9,20 +9,23 @@ st.set_page_config(page_title="Real-Time Bitcoin Feed", page_icon="✅", layout=
 # Dashboard title
 st.title("Real-Time / Live Bitcoin Feed")
 
-# Initialize the Kafka consumer handler
-kafka_handler = KafkaConsumerHandler()
+# Initialize the Kafka consumer handlers
+pricing_consumer = KafkaConsumerHandler(topic="conn-events")
+gaps_consumer = KafkaConsumerHandler(topic="gaps-events")
 
 # Start the Kafka consumer in the background
-threading.Thread(target=kafka_handler.start_consumer, daemon=True).start()
+threading.Thread(target=pricing_consumer.start_consumer, daemon=True).start()
+threading.Thread(target=gaps_consumer.start_consumer, daemon=True).start()
 
 # Visualization loop
 placeholder = st.empty()
 while True:
-    df = kafka_handler.get_dataframe()
-    if df.height > 0:  # Ensure the DataFrame has data before plotting
+    pricing_df = pricing_consumer.get_dataframe()
+    gaps_df = gaps_consumer.get_dataframe()
+    if pricing_df.height > 0:  # Ensure the DataFrame has data before plotting
         with placeholder.container():
-            st.line_chart(df, x="timestamp", y="price")
-            st.dataframe(df)
+            st.line_chart(pricing_df, x="timestamp", y="price")
+            st.dataframe(gaps_df)
     else:
         st.write("Waiting for data...")
     time.sleep(10)

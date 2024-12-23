@@ -5,14 +5,16 @@ from multiprocessing import Manager
 
 
 class KafkaConsumerHandler:
-    def __init__(self, topic="conn-events", wait_time=60):
+    def __init__(self, topic: str="conn-events", wait_time: int=60):
         self.topic = topic
         self.wait_time = wait_time
+        self.df_name = topic+'_df'
+        ### EDIT HERE FOR SHARED MEMORY WITH TWO DFS
 
         # Shared memory setup
         manager = Manager()
         self.shared_data = manager.dict()
-        self.shared_data["df"] = pl.DataFrame(
+        self.shared_data[self.df_name] = pl.DataFrame(
             schema={
                 "timestamp": pl.String,
                 "price": pl.Float64
@@ -26,21 +28,21 @@ class KafkaConsumerHandler:
             'auto.offset.reset': 'earliest'
         }
 
-    def get_dataframe(self):
-        return self.shared_data["df"]
+    def get_dataframe(self) -> pl.DataFrame:
+        return self.shared_data[self.df_name]
 
-    def add_to_df(self, row: pl.DataFrame):
+    def add_to_df(self, row: pl.DataFrame) -> pl.DataFrame:
         current_timestamp = row.select(pl.first("timestamp")).item()
-        if not self.shared_data["df"].filter(pl.col("timestamp") == current_timestamp).is_empty():
-            self.shared_data["df"] = self.shared_data["df"].filter(pl.col("timestamp") != current_timestamp)
-            return self.shared_data["df"].vstack(row)
-        elif self.shared_data["df"].height >= 120:
-            min_timestamp = self.shared_data["df"].select(pl.col("timestamp")).min().item()
-            self.shared_data["df"] = self.shared_data["df"].filter(pl.col("timestamp") != min_timestamp)
+        if not self.shared_data[self.df_name].filter(pl.col("timestamp") == current_timestamp).is_empty():
+            self.shared_data[self.df_name] = self.shared_data[self.df_name].filter(pl.col("timestamp") != current_timestamp)
+            return self.shared_data[self.df_name].vstack(row)
+        elif self.shared_data[self.df_name].height >= 120:
+            min_timestamp = self.shared_data[self.df_name].select(pl.col("timestamp")).min().item()
+            self.shared_data[self.df_name] = self.shared_data[self.df_name].filter(pl.col("timestamp") != min_timestamp)
 
-        return self.shared_data["df"].vstack(row)
+        return self.shared_data[self.df_name].vstack(row)
 
-    def start_consumer(self):
+    def start_consumer(self) -> None:
         consumer = Consumer(self.conf)
         consumer.subscribe([self.topic])
         print("Consumer started and listening...")
@@ -65,8 +67,8 @@ class KafkaConsumerHandler:
                         "price": deserialized_data["price"]
                     })
 
-                    self.shared_data["df"] = self.add_to_df(new_row)
-                print(self.shared_data["df"])
+                    self.shared_data[self.df_name] = self.add_to_df(new_row)
+                print(self.shared_data[self.df_name])
 
         except KeyboardInterrupt:
             print("Consumer interrupted by user")
